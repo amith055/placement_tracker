@@ -1,3 +1,5 @@
+'use client';
+import { useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { readinessScore, upcomingTests } from '@/lib/mock-data';
@@ -10,6 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+
 
 function SkillCard({ title, score, icon: Icon, progressColor }: { title: string, score: number, icon: React.ElementType, progressColor: string }) {
     return (
@@ -27,6 +30,9 @@ function SkillCard({ title, score, icon: Icon, progressColor }: { title: string,
 }
 
 export default function DashboardPage() {
+  const searchParams = useSearchParams();
+  const email = searchParams.get('email');
+  
   return (
     <div className="flex flex-1 flex-col gap-4">
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
