@@ -1,5 +1,5 @@
 'use client';
-
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -36,7 +36,7 @@ import {
 import { PlaceHolderImages } from '@/lib/placeholder-images';
 
 const navItems = [
-  { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+  { href: `/dashboard?email=${encodeURIComponent('amithiremath05@gmail.com')}`, icon: LayoutDashboard, label: 'Dashboard' },
   { href: '/aptitude', icon: BookCopy, label: 'Aptitude' },
   { href: '/coding', icon: Code, label: 'Coding' },
   { href: '/soft-skills', icon: ClipboardList, label: 'Soft Skills' },
@@ -83,6 +83,7 @@ function NavContent({ items, isMobile = false }: { items: typeof navItems, isMob
 }
 
 export function AppSidebar() {
+ 
   const avatar = PlaceHolderImages.find((img) => img.id === 'avatar-1');
   return (
     <>
@@ -98,16 +99,6 @@ export function AppSidebar() {
             <NavContent items={navItems} />
           </div>
           <div className="mt-auto p-4">
-            <div className="flex items-center gap-3 rounded-lg px-3 py-2">
-               {avatar && <Avatar className="h-9 w-9">
-                    <AvatarImage src={avatar.imageUrl} alt="Avatar" data-ai-hint={avatar.imageHint} />
-                    <AvatarFallback>AD</AvatarFallback>
-                </Avatar>}
-                <div className="flex flex-col">
-                    <span className="text-sm font-medium">Alex Doe</span>
-                    <span className="text-xs text-muted-foreground">alex.doe@example.com</span>
-                </div>
-            </div>
             <TooltipProvider>
                 <Tooltip>
                     <TooltipTrigger asChild>
@@ -147,16 +138,6 @@ export function MobileNav() {
             <NavContent items={navItems} isMobile={true}/>
         </div>
         <div className="mt-auto border-t p-4">
-            <div className="flex items-center gap-4">
-               {avatar && <Avatar className="h-9 w-9">
-                    <AvatarImage src={avatar.imageUrl} alt="Avatar" data-ai-hint={avatar.imageHint} />
-                    <AvatarFallback>AD</AvatarFallback>
-                </Avatar>}
-                <div>
-                    <p className="text-sm font-medium leading-none">Alex Doe</p>
-                    <p className="text-xs text-muted-foreground">alex.doe@example.com</p>
-                </div>
-            </div>
             <Link href="/login" className="mt-4 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary">
                 <LogOut className="h-4 w-4" />
                 Logout
