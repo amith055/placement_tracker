@@ -34,7 +34,7 @@ export default function LoginPage() {
       // Successful login
       // example after successful login
 localStorage.setItem("userEmail", email);
-      router.push(`/dashboard?email=${encodeURIComponent(email)}`);
+      router.push('/dashboard');
     } catch (err: any) {
       setError(err.message);
     } finally {

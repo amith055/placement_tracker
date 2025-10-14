@@ -19,8 +19,10 @@ import Link from 'next/link';
 import { db } from '@/lib/firebase';
 import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
 import { Progress } from '@/components/ui/progress';
+import { use } from 'react';
 
-export default function AptitudeTestPage({ params }: { params: { testId: string } }) {
+export default function SoftSkillTestPage({ params }: { params: Promise<{ testId: string }> }) {
+  const { testId } = use(params);
   const [testDetails, setTestDetails] = useState<any>(null);
   const [questions, setQuestions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -40,11 +42,11 @@ export default function AptitudeTestPage({ params }: { params: { testId: string 
   useEffect(() => {
     const fetchTestAndQuestions = async () => {
       try {
-        const testQuery = query(collection(db, "apptitude_questions"), where("id", "==", params.testId));
+        const testQuery = query(collection(db, "softskill_test"), where("id", "==", testId));
         const testSnap = await getDocs(testQuery);
         const testData = testSnap.docs[0]?.data();
 
-        const questionQuery = query(collection(db, "app_test_ques"), where("id", "==", params.testId));
+        const questionQuery = query(collection(db, "softskill_test_ques"), where("id", "==", testId));
         const questionSnap = await getDocs(questionQuery);
         const questionsData = questionSnap.docs.map(doc => doc.data());
 
@@ -53,7 +55,7 @@ export default function AptitudeTestPage({ params }: { params: { testId: string 
         setTimeLeft((testData?.duration || 0) * 60);
 
         // fetch all aptitude questions count (for overall %)
-        const allTestsSnap = await getDocs(collection(db, "app_test_ques"));
+        const allTestsSnap = await getDocs(collection(db, "softskill_test_ques"));
         setTotalQuestions(allTestsSnap.size); // e.g. 15 total
       } catch (error) {
         console.error("Error fetching test data:", error);
@@ -63,7 +65,7 @@ export default function AptitudeTestPage({ params }: { params: { testId: string 
     };
 
     fetchTestAndQuestions();
-  }, [params.testId]);
+  }, [testId]);
 
   // 🔹 Timer
   useEffect(() => {
@@ -118,10 +120,10 @@ export default function AptitudeTestPage({ params }: { params: { testId: string 
       const userSnap = await getDocs(userQuery);
       if (!userSnap.empty) {
         const userDoc = userSnap.docs[0];
-        const old_score = userDoc.data().appti_score || 0;
+        const old_score = userDoc.data().softskill_score || 0;
 
         await updateDoc(doc(db, "users", userDoc.id), {
-          appti_score:old_score+ Number(percentage),
+          softskill_score:old_score+ Number(percentage),
         });
       }
     } catch (err) {
@@ -223,7 +225,7 @@ export default function AptitudeTestPage({ params }: { params: { testId: string 
               {score !== null ? (
                 <>
                   You scored <strong>{score}/{questions.length}</strong> in this test. <br />
-                  Your overall aptitude score has been updated in your profile.
+                  Your overall softskill score has been updated in your profile.
                 </>
               ) : (
                 "Your responses have been recorded."

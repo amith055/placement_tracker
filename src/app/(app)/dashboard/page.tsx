@@ -1,6 +1,4 @@
 'use client';
-import { useRouter } from 'next/navigation';
-import { useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
@@ -13,10 +11,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { db } from '@/lib/firebase'; // make sure firebase is initialized properly
+import { db } from '@/lib/firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 
-// Define structure of your user data
 interface UserData {
   appti_score: number;
   coding_score: number;
@@ -34,14 +31,12 @@ interface Test {
   date: string;
 }
 
-// Mock upcoming tests
 const upcomingTests: Test[] = [
   { id: '1', title: 'Aptitude Test 1', type: 'Aptitude', date: '2025-10-15' },
   { id: '2', title: 'Coding Test 1', type: 'Coding', date: '2025-10-20' },
   { id: '3', title: 'Soft Skills Assessment', type: 'Soft Skills', date: '2025-10-25' },
 ];
 
-// Skill card component
 function SkillCard({ title, score, icon: Icon, progressColor }: { title: string, score: number, icon: React.ElementType, progressColor: string }) {
   return (
     <Card>
@@ -60,19 +55,17 @@ function SkillCard({ title, score, icon: Icon, progressColor }: { title: string,
 export default function DashboardPage() {
   const [user, setUser] = useState<UserData | null>(null);
   const [readinessScore, setReadinessScore] = useState({
-    
     total: 0,
     aptitude: 0,
     coding: 0,
     softSkills: 0,
   });
-  const searchParams = useSearchParams();
-  const email = searchParams.get('email');
+
+  const email = localStorage.getItem("userEmail") || "";
 
   useEffect(() => {
     const fetchUser = async () => {
       try {
-        // 🔹 Hardcoded email for now
         const q = query(collection(db, 'users'), where('email', '==', email));
         const querySnapshot = await getDocs(q);
 
@@ -80,7 +73,6 @@ export default function DashboardPage() {
           const data = querySnapshot.docs[0].data() as UserData;
           setUser(data);
 
-          // Calculate readiness score
           const total = Math.round(
             data.appti_score * 0.3 + data.coding_score * 0.4 + data.softskill_score * 0.3
           );
@@ -98,9 +90,25 @@ export default function DashboardPage() {
     };
 
     fetchUser();
-  }, []);
+  }, [email]);
 
   if (!user) return <div className="p-6 text-center">Loading user data...</div>;
+
+  // ✅ Determine color & rating based on total score
+  const getReadinessColor = (score: number) => {
+    if (score < 35) return 'text-red-500';
+    if (score < 70) return 'text-yellow-500';
+    return 'text-green-500';
+  };
+
+  const getReadinessLabel = (score: number) => {
+    if (score < 35) return 'Weak';
+    if (score < 70) return 'Average';
+    return 'Excellent';
+  };
+
+  const readinessColor = getReadinessColor(readinessScore.total);
+  const readinessLabel = getReadinessLabel(readinessScore.total);
 
   return (
     <div className="flex flex-1 flex-col gap-4">
@@ -117,7 +125,7 @@ export default function DashboardPage() {
           </CardHeader>
         </Card>
 
-        {/* Readiness Section */}
+        {/* ✅ Readiness Section */}
         <Card className="lg:col-span-2">
           <CardHeader className="pb-2">
             <CardTitle className="text-lg font-medium">Placement Readiness Score</CardTitle>
@@ -135,7 +143,7 @@ export default function DashboardPage() {
                   strokeWidth="2"
                 />
                 <path
-                  className="text-primary"
+                  className={readinessColor}
                   strokeDasharray={`${readinessScore.total}, 100`}
                   d="M18 2.0845
                       a 15.9155 15.9155 0 0 1 0 31.831
@@ -146,11 +154,19 @@ export default function DashboardPage() {
                   strokeLinecap="round"
                 />
               </svg>
+
               <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className="font-headline text-4xl font-bold">{readinessScore.total}%</span>
+                <span className={`font-headline text-4xl font-bold ${readinessColor}`}>
+                  {readinessScore.total}%
+                </span>
                 <span className="text-sm text-muted-foreground">Ready</span>
+                {/* ✅ Rating label below */}
+                <span className={`text-base font-semibold mt-1 ${readinessColor}`}>
+                  {readinessLabel}
+                </span>
               </div>
             </div>
+
             <p className="text-center text-sm text-muted-foreground">
               Your overall readiness score based on your Aptitude, Coding, and Soft Skills.
             </p>

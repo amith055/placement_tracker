@@ -36,7 +36,7 @@ import {
 import { PlaceHolderImages } from '@/lib/placeholder-images';
 
 const navItems = [
-  { href: `/dashboard?email=${encodeURIComponent('amithiremath05@gmail.com')}`, icon: LayoutDashboard, label: 'Dashboard' },
+  { href: `/dashboard`, icon: LayoutDashboard, label: 'Dashboard' },
   { href: '/aptitude', icon: BookCopy, label: 'Aptitude' },
   { href: '/coding', icon: Code, label: 'Coding' },
   { href: '/soft-skills', icon: ClipboardList, label: 'Soft Skills' },
