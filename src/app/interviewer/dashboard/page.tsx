@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { batchProgress } from '@/lib/mock-data';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
 
-export default function AdminDashboardPage() {
+export default function InterviewerDashboardPage() {
   return (
     <div className="grid gap-6">
         <Card>

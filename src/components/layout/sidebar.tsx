@@ -44,9 +44,12 @@ const navItems = [
   { href: '/leaderboard', icon: Trophy, label: 'Leaderboard' },
 ];
 
-const adminNavItems = [
-  { href: '/admin/dashboard', icon: LayoutDashboard, label: 'Overview' },
-  { href: '/admin/questions', icon: BookCopy, label: 'Questions' },
+const intNavItems = [
+  { href: '/interviewer/dashboard', icon: LayoutDashboard, label: 'Overview' },
+  { href: '/interviewer/batch', icon: BookCopy, label: 'Batch' },
+  { href: '/interviewer/tests', icon: ClipboardList, label: 'Tests' },
+  { href: '/interviewer/analytics', icon: Trophy, label: 'Analytics' },
+  
 ];
 
 function NavContent({ items, isMobile = false }: { items: typeof navItems, isMobile?: boolean }) {
@@ -148,18 +151,18 @@ export function MobileNav() {
   );
 }
 
-export function AdminSidebar() {
+export function IntSidebar() {
     return (
       <div className="hidden border-r bg-muted/40 md:block">
         <div className="flex h-full max-h-screen flex-col gap-2">
           <div className="flex h-14 items-center border-b px-4 lg:h-[60px] lg:px-6">
             <Link href="/admin/dashboard" className="flex items-center gap-2 font-semibold">
               <ShieldCheck className="h-6 w-6 text-primary" />
-              <span className="font-headline">Admin Panel</span>
+              <span className="font-headline">NexusPrep</span>
             </Link>
           </div>
           <div className="flex-1">
-            <NavContent items={adminNavItems} />
+            <NavContent items={intNavItems} />
           </div>
           <div className="mt-auto p-4">
             <Button size="sm" variant="ghost" className="w-full justify-start" asChild>
@@ -171,7 +174,7 @@ export function AdminSidebar() {
     );
 }
 
-export function AdminMobileNav() {
+export function IntMobileNav() {
     return (
       <Sheet>
         <SheetTrigger asChild>
@@ -184,11 +187,11 @@ export function AdminMobileNav() {
           <div className="flex h-14 items-center border-b px-4 lg:h-[60px] lg:px-6">
             <Link href="/admin/dashboard" className="flex items-center gap-2 font-semibold">
               <ShieldCheck className="h-6 w-6 text-primary" />
-              <span className="font-headline">Admin</span>
+              <span className="font-headline">NexusPrep</span>
             </Link>
           </div>
           <div className="flex-1 overflow-y-auto">
-              <NavContent items={adminNavItems} isMobile={true}/>
+              <NavContent items={intNavItems} isMobile={true}/>
           </div>
           <div className="mt-auto border-t p-4">
             <Button size="sm" variant="ghost" className="w-full justify-start" asChild>

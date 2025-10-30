@@ -49,9 +49,13 @@ export default function LandingPage() {
           <h1 className="font-headline text-2xl font-bold">NexusPrep</h1>
         </Link>
         <nav className="flex items-center gap-4">
+           <Button variant="ghost" asChild>
+            <Link href="/interviewer/login">Interviewer Portal</Link>
+          </Button>
           <Button variant="ghost" asChild>
             <Link href="/login">Log In</Link>
           </Button>
+         
           <Button asChild>
             <Link href="/signup">Sign Up</Link>
           </Button>
