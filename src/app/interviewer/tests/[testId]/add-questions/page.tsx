@@ -3,7 +3,8 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { collection, doc, getDoc, addDoc, updateDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { db, storage } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -20,6 +21,7 @@ export default function AddQuestionsPage() {
   const [testData, setTestData] = useState<any>(null);
   const [questions, setQuestions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   // ✅ Fetch test details from Firestore
   useEffect(() => {
@@ -31,12 +33,12 @@ export default function AddQuestionsPage() {
         const data = testSnap.data();
         setTestData(data);
 
-        // Initialize empty question rows with dynamic options
         const emptyRows = Array.from({ length: data.numQuestions }, (_, i) => ({
           slno: i + 1,
           question: '',
-          options: [''], // start with 1 empty option
+          options: [''],
           correct: '',
+          image: null,
         }));
         setQuestions(emptyRows);
       }
@@ -46,7 +48,7 @@ export default function AddQuestionsPage() {
     fetchTest();
   }, [testId]);
 
-  // ✅ Handle input changes for main question fields
+  // ✅ Handle question field change
   const handleInputChange = (index: number, field: string, value: string) => {
     const updated = [...questions];
     updated[index][field] = value;
@@ -60,7 +62,7 @@ export default function AddQuestionsPage() {
     setQuestions(updated);
   };
 
-  // ✅ Add new option to a question
+  // ✅ Add new option
   const addOption = (qIndex: number) => {
     const updated = [...questions];
     updated[qIndex].options.push('');
@@ -74,25 +76,56 @@ export default function AddQuestionsPage() {
     setQuestions(updated);
   };
 
-  // ✅ Save all questions to Firestore
+  // ✅ Handle image upload preview
+  const handleImageUpload = (qIndex: number, file: File) => {
+    const updated = [...questions];
+    const imageUrl = URL.createObjectURL(file);
+    updated[qIndex].image = { file, preview: imageUrl };
+    setQuestions(updated);
+  };
+
+  // ✅ Save questions to Firestore with image upload
   const handleSaveQuestions = async () => {
     if (!testId || !testData) return;
 
+    setSaving(true);
     try {
-      const testRef = doc(db, 'int_tests', testId as string);
-      const questionsRef = collection(testRef, 'questions');
-
       for (const q of questions) {
-        await addDoc(questionsRef, q);
+        let img_link = null;
+
+        // ✅ Upload image if present
+        if (q.image && q.image.file) {
+          const imageRef = ref(
+            storage,
+            `questions/${testId}/q${q.slno}_${Date.now()}`
+          );
+          await uploadBytes(imageRef, q.image.file);
+          img_link = await getDownloadURL(imageRef);
+        }
+
+        // ✅ Add to "int_ques" collection
+        await addDoc(collection(db, 'int_ques'), {
+          slno: q.slno,
+          question: q.question,
+          options: q.options.filter((opt: string) => opt.trim() !== ''),
+          correct_ans: q.correct,
+          testid: testId,
+          img_link: img_link || null,
+        });
       }
 
-      await updateDoc(testRef, { que_added: questions.length });
+      // ✅ Update the test document
+      await updateDoc(doc(db, 'int_tests', testId as string), {
+        que_added: questions.length,
+      });
 
-      alert(`✅ ${questions.length} questions were added successfully!`);
+      alert(`✅ ${questions.length} questions added successfully!`);
       router.push('/interviewer/tests');
     } catch (err) {
-      console.error(err);
+      console.error('Error saving questions:', err);
       alert('❌ Error saving questions. Please try again.');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -118,7 +151,9 @@ export default function AddQuestionsPage() {
                   <th className="border p-2 text-center w-[60px]">Sl. No</th>
                   <th className="border p-2 text-left w-[400px]">Question</th>
                   <th className="border p-2 text-left w-[350px]">Options</th>
-                  <th className="border p-2 text-left w-[160px]">Correct Answer</th>
+                  <th className="border p-2 text-left w-[160px]">
+                    Correct Answer
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -126,21 +161,63 @@ export default function AddQuestionsPage() {
                   <tr key={qIndex} className="align-top">
                     <td className="border p-2 text-center">{q.slno}</td>
 
-                    {/* ✅ Dynamic question field */}
-                    <td className="border p-2">
-                      <textarea
-                        className="w-full border rounded-md p-2 resize-none overflow-hidden min-h-[40px]"
-                        value={q.question}
-                        onChange={(e) => {
-                          handleInputChange(qIndex, 'question', e.target.value);
-                          e.target.style.height = 'auto';
-                          e.target.style.height = `${e.target.scrollHeight}px`;
-                        }}
-                        placeholder="Enter question..."
-                      />
+                    {/* ✅ Question + image upload */}
+                    <td className="border p-2 align-top">
+                      <div className="flex flex-col gap-2">
+                        <div className="flex items-center gap-2">
+                          <textarea
+                            className="w-full border rounded-md p-2 resize-none overflow-hidden min-h-[40px]"
+                            value={q.question}
+                            onChange={(e) => {
+                              handleInputChange(qIndex, 'question', e.target.value);
+                              e.target.style.height = 'auto';
+                              e.target.style.height = `${e.target.scrollHeight}px`;
+                            }}
+                            placeholder="Enter question..."
+                          />
+
+                          {/* Image upload */}
+                          <label className="cursor-pointer flex items-center justify-center w-8 h-8 rounded-full bg-gray-100 border hover:bg-gray-200">
+                            📷
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) => {
+                                if (e.target.files && e.target.files[0]) {
+                                  handleImageUpload(qIndex, e.target.files[0]);
+                                }
+                              }}
+                            />
+                          </label>
+                        </div>
+
+                        {/* Image preview */}
+                        {q.image && (
+                          <div className="relative w-[150px] mt-1">
+                            <img
+                              src={q.image.preview}
+                              alt={`Question ${q.slno}`}
+                              className="rounded-md border object-cover w-full h-auto"
+                            />
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              className="absolute top-1 right-1 text-xs py-0 px-1"
+                              onClick={() => {
+                                const updated = [...questions];
+                                updated[qIndex].image = null;
+                                setQuestions(updated);
+                              }}
+                            >
+                              ✕
+                            </Button>
+                          </div>
+                        )}
+                      </div>
                     </td>
 
-                    {/* ✅ Dynamic options list */}
+                    {/* ✅ Options */}
                     <td className="border p-2">
                       <div className="flex flex-col gap-2">
                         {q.options.map((opt: string, optIndex: number) => (
@@ -173,26 +250,25 @@ export default function AddQuestionsPage() {
                       </div>
                     </td>
 
-                    {/* ✅ Correct Answer (Dropdown from options) */}
-<td className="border p-2">
-  <div className="flex flex-col">
-    <select
-      className="border rounded-md p-2 bg-white text-sm"
-      value={q.correct}
-      onChange={(e) => handleInputChange(qIndex, 'correct', e.target.value)}
-    >
-      <option value="">Select...</option>
-      {q.options
-        .filter((opt: string) => opt.trim() !== '')
-        .map((opt: string, idx: number) => (
-          <option key={idx} value={opt}>
-            {opt || `Option ${idx + 1}`}
-          </option>
-        ))}
-    </select>
-  </div>
-</td>
-
+                    {/* ✅ Correct answer dropdown */}
+                    <td className="border p-2">
+                      <select
+                        className="border rounded-md p-2 bg-white text-sm"
+                        value={q.correct}
+                        onChange={(e) =>
+                          handleInputChange(qIndex, 'correct', e.target.value)
+                        }
+                      >
+                        <option value="">Select...</option>
+                        {q.options
+                          .filter((opt: string) => opt.trim() !== '')
+                          .map((opt: string, idx: number) => (
+                            <option key={idx} value={opt}>
+                              {opt || `Option ${idx + 1}`}
+                            </option>
+                          ))}
+                      </select>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -201,7 +277,9 @@ export default function AddQuestionsPage() {
         </CardContent>
 
         <CardFooter className="flex justify-end">
-          <Button onClick={handleSaveQuestions}>Save Questions</Button>
+          <Button onClick={handleSaveQuestions} disabled={saving}>
+            {saving ? 'Saving...' : 'Save Questions'}
+          </Button>
         </CardFooter>
       </Card>
     </div>
