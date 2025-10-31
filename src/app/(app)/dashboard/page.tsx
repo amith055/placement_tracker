@@ -1,8 +1,9 @@
 'use client';
+
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { BookCopy, Calendar, Code, Users } from 'lucide-react';
+import { BookCopy, Calendar, Code, Users, Loader2 } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -12,8 +13,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { db } from '@/lib/firebase';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
 
+// ================== Interfaces ===================
 interface UserData {
   appti_score: number;
   coding_score: number;
@@ -26,17 +28,15 @@ interface UserData {
 
 interface Test {
   id: string;
-  title: string;
-  type: string;
+  company_name: string;
+  test_title: string;
+  questions: number;
+  duration: string;
   date: string;
+  time: string;
 }
 
-const upcomingTests: Test[] = [
-  { id: '1', title: 'Aptitude Test 1', type: 'Aptitude', date: '2025-10-15' },
-  { id: '2', title: 'Coding Test 1', type: 'Coding', date: '2025-10-20' },
-  { id: '3', title: 'Soft Skills Assessment', type: 'Soft Skills', date: '2025-10-25' },
-];
-
+// ================== Skill Card ===================
 function SkillCard({ title, score, icon: Icon, progressColor }: { title: string, score: number, icon: React.ElementType, progressColor: string }) {
   return (
     <Card>
@@ -52,6 +52,7 @@ function SkillCard({ title, score, icon: Icon, progressColor }: { title: string,
   );
 }
 
+// ================== Dashboard Page ===================
 export default function DashboardPage() {
   const [user, setUser] = useState<UserData | null>(null);
   const [readinessScore, setReadinessScore] = useState({
@@ -61,8 +62,12 @@ export default function DashboardPage() {
     softSkills: 0,
   });
 
+  const [tests, setTests] = useState<Test[]>([]);
+  const [loadingTests, setLoadingTests] = useState(true);
+
   const email = localStorage.getItem("userEmail") || "";
 
+  // ✅ Fetch user data
   useEffect(() => {
     const fetchUser = async () => {
       try {
@@ -92,15 +97,68 @@ export default function DashboardPage() {
     fetchUser();
   }, [email]);
 
+  // ✅ Fetch upcoming tests from Firestore
+  // ✅ Fetch upcoming tests from Firestore
+useEffect(() => {
+  const fetchTests = async () => {
+    try {
+      const q = query(collection(db, "int_tests"), orderBy("date", "asc"));
+      const snapshot = await getDocs(q);
+
+      const now = new Date(); // current time
+
+      const testsData: Test[] = snapshot.docs
+        .map((doc) => {
+          const data = doc.data();
+
+          const dateStr = data.date || "";
+          const timeStr = data.time || "";
+
+          // Convert "2025-11-05" + "10:00 AM" → JS Date
+          const scheduledDateTime = new Date(`${dateStr} ${timeStr}`);
+
+          return {
+            id: doc.id,
+            company_name: data.company_name || "Unknown",
+            test_title: data.testName || "Untitled Test",
+            questions: data.numQuestions || 0,
+            duration: data.duration
+              ? data.duration.toString().includes("min")
+                ? data.duration
+                : `${data.duration} mins`
+              : "N/A",
+            date: data.date || "N/A",
+            time: data.time || "N/A",
+            scheduledDateTime,
+          };
+        })
+        // ✅ Filter: only tests with future date/time
+        .filter((test) => test.scheduledDateTime > now)
+        // ✅ Sort by date ascending
+        .sort((a, b) => a.scheduledDateTime.getTime() - b.scheduledDateTime.getTime());
+
+      console.log("Upcoming tests:", testsData);
+      setTests(testsData);
+    } catch (err) {
+      console.error("Error fetching tests:", err);
+    } finally {
+      setLoadingTests(false);
+    }
+  };
+
+  fetchTests();
+}, []);
+
+
+
   if (!user) return <div className="p-6 text-center">Loading user data...</div>;
 
-  // ✅ Determine color & rating based on total score
+  // ✅ Readiness logic
   const getReadinessColor = (score: number) => {
     if (score < 35) return 'text-red-500';
     if (score < 70) return 'text-yellow-500';
     return 'text-green-500';
   };
-
   const getReadinessLabel = (score: number) => {
     if (score < 35) return 'Weak';
     if (score < 70) return 'Average';
@@ -110,8 +168,10 @@ export default function DashboardPage() {
   const readinessColor = getReadinessColor(readinessScore.total);
   const readinessLabel = getReadinessLabel(readinessScore.total);
 
+  // ================== Render UI ===================
   return (
     <div className="flex flex-1 flex-col gap-4">
+      {/* Welcome Section */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card className="col-span-1 md:col-span-2 lg:col-span-4">
           <CardHeader>
@@ -125,7 +185,7 @@ export default function DashboardPage() {
           </CardHeader>
         </Card>
 
-        {/* ✅ Readiness Section */}
+        {/* Readiness Section */}
         <Card className="lg:col-span-2">
           <CardHeader className="pb-2">
             <CardTitle className="text-lg font-medium">Placement Readiness Score</CardTitle>
@@ -135,9 +195,7 @@ export default function DashboardPage() {
               <svg className="h-full w-full" viewBox="0 0 36 36">
                 <path
                   className="text-muted"
-                  d="M18 2.0845
-                      a 15.9155 15.9155 0 0 1 0 31.831
-                      a 15.9155 15.9155 0 0 1 0 -31.831"
+                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
                   fill="none"
                   stroke="currentColor"
                   strokeWidth="2"
@@ -145,9 +203,7 @@ export default function DashboardPage() {
                 <path
                   className={readinessColor}
                   strokeDasharray={`${readinessScore.total}, 100`}
-                  d="M18 2.0845
-                      a 15.9155 15.9155 0 0 1 0 31.831
-                      a 15.9155 15.9155 0 0 1 0 -31.831"
+                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
                   fill="none"
                   stroke="currentColor"
                   strokeWidth="2.5"
@@ -160,7 +216,6 @@ export default function DashboardPage() {
                   {readinessScore.total}%
                 </span>
                 <span className="text-sm text-muted-foreground">Ready</span>
-                {/* ✅ Rating label below */}
                 <span className={`text-base font-semibold mt-1 ${readinessColor}`}>
                   {readinessLabel}
                 </span>
@@ -181,7 +236,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Upcoming Tests Table */}
+      {/* ✅ Upcoming Tests Table (Dynamic from Firestore) */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -190,24 +245,41 @@ export default function DashboardPage() {
           <CardDescription>Stay prepared for your upcoming assessments.</CardDescription>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Test Title</TableHead>
-                <TableHead className="hidden md:table-cell">Type</TableHead>
-                <TableHead>Date</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {upcomingTests.map(test => (
-                <TableRow key={test.id}>
-                  <TableCell className="font-medium">{test.title}</TableCell>
-                  <TableCell className="hidden md:table-cell">{test.type}</TableCell>
-                  <TableCell>{test.date}</TableCell>
+          {loadingTests ? (
+            <div className="flex justify-center items-center py-4">
+              <Loader2 className="h-5 w-5 animate-spin mr-2 text-primary" />
+              Loading tests...
+            </div>
+          ) : tests.length === 0 ? (
+            <p className="text-center text-muted-foreground">No upcoming tests found.</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Sl. No</TableHead>
+                  <TableHead>Company Name</TableHead>
+                  <TableHead>Test Title</TableHead>
+                  <TableHead>Questions</TableHead>
+                  <TableHead>Duration</TableHead>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Time</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {tests.map((test, index) => (
+                  <TableRow key={test.id}>
+                    <TableCell>{index + 1}</TableCell>
+                    <TableCell>{test.company_name}</TableCell>
+                    <TableCell>{test.test_title}</TableCell>
+                    <TableCell>{test.questions}</TableCell>
+                    <TableCell>{test.duration}</TableCell>
+                    <TableCell>{test.date}</TableCell>
+                    <TableCell>{test.time}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
     </div>

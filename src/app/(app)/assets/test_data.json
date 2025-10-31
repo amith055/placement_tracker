@@ -1,0 +1,38 @@
+[
+  {
+    "studentEmail": "john.doe@gmail.com",
+    "testName": "Technical Interview 1",
+    "marks": 78,
+    "totalMarks": 100,
+    "skills": {
+      "Problem Solving": 8,
+      "Communication": 6,
+      "Technical Knowledge": 9,
+      "Teamwork": 7
+    }
+  },
+  {
+    "studentEmail": "john.doe@gmail.com",
+    "testName": "HR Round",
+    "marks": 65,
+    "totalMarks": 100,
+    "skills": {
+      "Problem Solving": 6,
+      "Communication": 8,
+      "Technical Knowledge": 5,
+      "Teamwork": 7
+    }
+  },
+  {
+    "studentEmail": "john.doe@gmail.com",
+    "testName": "Coding Challenge",
+    "marks": 82,
+    "totalMarks": 100,
+    "skills": {
+      "Problem Solving": 9,
+      "Communication": 6,
+      "Technical Knowledge": 8,
+      "Teamwork": 6
+    }
+  }
+]
