@@ -28,6 +28,7 @@ interface Test {
   testName: string;
   duration: number;
   numQuestions: number;
+  scheduledAt: Date;
   date: string;
   time: string;
   company_name: string;

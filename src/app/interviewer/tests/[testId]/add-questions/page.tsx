@@ -31,15 +31,11 @@ export default function AddQuestionsPage() {
         const data = testSnap.data();
         setTestData(data);
 
-        // Initialize empty question rows
+        // Initialize empty question rows with dynamic options
         const emptyRows = Array.from({ length: data.numQuestions }, (_, i) => ({
           slno: i + 1,
           question: '',
-          op1: '',
-          op2: '',
-          op3: '',
-          op4: '',
-          op5: '',
+          options: [''], // start with 1 empty option
           correct: '',
         }));
         setQuestions(emptyRows);
@@ -50,10 +46,31 @@ export default function AddQuestionsPage() {
     fetchTest();
   }, [testId]);
 
-  // ✅ Handle input changes
+  // ✅ Handle input changes for main question fields
   const handleInputChange = (index: number, field: string, value: string) => {
     const updated = [...questions];
     updated[index][field] = value;
+    setQuestions(updated);
+  };
+
+  // ✅ Handle option text change
+  const handleOptionChange = (qIndex: number, optIndex: number, value: string) => {
+    const updated = [...questions];
+    updated[qIndex].options[optIndex] = value;
+    setQuestions(updated);
+  };
+
+  // ✅ Add new option to a question
+  const addOption = (qIndex: number) => {
+    const updated = [...questions];
+    updated[qIndex].options.push('');
+    setQuestions(updated);
+  };
+
+  // ✅ Remove an option
+  const removeOption = (qIndex: number, optIndex: number) => {
+    const updated = [...questions];
+    updated[qIndex].options.splice(optIndex, 1);
     setQuestions(updated);
   };
 
@@ -69,10 +86,7 @@ export default function AddQuestionsPage() {
         await addDoc(questionsRef, q);
       }
 
-      // Update question count
-      await updateDoc(testRef, {
-        que_added: questions.length,
-      });
+      await updateDoc(testRef, { que_added: questions.length });
 
       alert(`✅ ${questions.length} questions were added successfully!`);
       router.push('/interviewer/tests');
@@ -101,29 +115,24 @@ export default function AddQuestionsPage() {
             <table className="w-full border border-gray-300 text-sm">
               <thead className="bg-gray-100">
                 <tr>
-                  <th className="border p-2 text-left w-[60px]">Sl. No</th>
+                  <th className="border p-2 text-center w-[60px]">Sl. No</th>
                   <th className="border p-2 text-left w-[400px]">Question</th>
-                  <th className="border p-2 text-left w-[150px]">Option 1</th>
-                  <th className="border p-2 text-left w-[150px]">Option 2</th>
-                  <th className="border p-2 text-left w-[150px]">Option 3</th>
-                  <th className="border p-2 text-left w-[150px]">Option 4</th>
-                  <th className="border p-2 text-left w-[150px]">Option 5</th>
-                  <th className="border p-2 text-left w-[130px]">Correct Answer</th>
+                  <th className="border p-2 text-left w-[350px]">Options</th>
+                  <th className="border p-2 text-left w-[160px]">Correct Answer</th>
                 </tr>
               </thead>
-
               <tbody>
-                {questions.map((q, index) => (
-                  <tr key={index} className="align-top">
+                {questions.map((q, qIndex) => (
+                  <tr key={qIndex} className="align-top">
                     <td className="border p-2 text-center">{q.slno}</td>
 
-                    {/* ✅ Dynamic textarea for question */}
+                    {/* ✅ Dynamic question field */}
                     <td className="border p-2">
                       <textarea
                         className="w-full border rounded-md p-2 resize-none overflow-hidden min-h-[40px]"
                         value={q.question}
                         onChange={(e) => {
-                          handleInputChange(index, 'question', e.target.value);
+                          handleInputChange(qIndex, 'question', e.target.value);
                           e.target.style.height = 'auto';
                           e.target.style.height = `${e.target.scrollHeight}px`;
                         }}
@@ -131,61 +140,59 @@ export default function AddQuestionsPage() {
                       />
                     </td>
 
-                    {/* ✅ Standard inputs for options */}
+                    {/* ✅ Dynamic options list */}
                     <td className="border p-2">
-                      <Input
-                        value={q.op1}
-                        onChange={(e) =>
-                          handleInputChange(index, 'op1', e.target.value)
-                        }
-                        placeholder="Option 1"
-                      />
+                      <div className="flex flex-col gap-2">
+                        {q.options.map((opt: string, optIndex: number) => (
+                          <div key={optIndex} className="flex items-center gap-2">
+                            <Input
+                              value={opt}
+                              onChange={(e) =>
+                                handleOptionChange(qIndex, optIndex, e.target.value)
+                              }
+                              placeholder={`Option ${optIndex + 1}`}
+                            />
+                            {q.options.length > 1 && (
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => removeOption(qIndex, optIndex)}
+                              >
+                                ✕
+                              </Button>
+                            )}
+                          </div>
+                        ))}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => addOption(qIndex)}
+                        >
+                          + Add Option
+                        </Button>
+                      </div>
                     </td>
-                    <td className="border p-2">
-                      <Input
-                        value={q.op2}
-                        onChange={(e) =>
-                          handleInputChange(index, 'op2', e.target.value)
-                        }
-                        placeholder="Option 2"
-                      />
-                    </td>
-                    <td className="border p-2">
-                      <Input
-                        value={q.op3}
-                        onChange={(e) =>
-                          handleInputChange(index, 'op3', e.target.value)
-                        }
-                        placeholder="Option 3"
-                      />
-                    </td>
-                    <td className="border p-2">
-                      <Input
-                        value={q.op4}
-                        onChange={(e) =>
-                          handleInputChange(index, 'op4', e.target.value)
-                        }
-                        placeholder="Option 4"
-                      />
-                    </td>
-                    <td className="border p-2">
-                      <Input
-                        value={q.op5}
-                        onChange={(e) =>
-                          handleInputChange(index, 'op5', e.target.value)
-                        }
-                        placeholder="Option 5"
-                      />
-                    </td>
-                    <td className="border p-2">
-                      <Input
-                        value={q.correct}
-                        onChange={(e) =>
-                          handleInputChange(index, 'correct', e.target.value)
-                        }
-                        placeholder="Correct Answer"
-                      />
-                    </td>
+
+                    {/* ✅ Correct Answer (Dropdown from options) */}
+<td className="border p-2">
+  <div className="flex flex-col">
+    <select
+      className="border rounded-md p-2 bg-white text-sm"
+      value={q.correct}
+      onChange={(e) => handleInputChange(qIndex, 'correct', e.target.value)}
+    >
+      <option value="">Select...</option>
+      {q.options
+        .filter((opt: string) => opt.trim() !== '')
+        .map((opt: string, idx: number) => (
+          <option key={idx} value={opt}>
+            {opt || `Option ${idx + 1}`}
+          </option>
+        ))}
+    </select>
+  </div>
+</td>
+
                   </tr>
                 ))}
               </tbody>
