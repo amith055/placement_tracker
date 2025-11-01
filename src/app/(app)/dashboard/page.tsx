@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { BookCopy, Calendar, Code, Users, Loader2 } from 'lucide-react';
+import { BookCopy, Calendar, Code, Users, Loader2, PlayCircle, Clock } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -34,6 +34,8 @@ interface Test {
   duration: string;
   date: string;
   time: string;
+  scheduledDateTime: Date;
+  endDateTime: Date;
 }
 
 // ================== Skill Card ===================
@@ -62,10 +64,18 @@ export default function DashboardPage() {
     softSkills: 0,
   });
 
-  const [tests, setTests] = useState<Test[]>([]);
+  const [ongoingTests, setOngoingTests] = useState<Test[]>([]);
+  const [upcomingTests, setUpcomingTests] = useState<Test[]>([]);
   const [loadingTests, setLoadingTests] = useState(true);
+  const [now, setNow] = useState(new Date());
 
-  const email = localStorage.getItem("userEmail") || "";
+  const email = typeof window !== 'undefined' ? localStorage.getItem("userEmail") || "" : "";
+
+  // Update timer every second
+  useEffect(() => {
+    const interval = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   // ✅ Fetch user data
   useEffect(() => {
@@ -97,63 +107,73 @@ export default function DashboardPage() {
     fetchUser();
   }, [email]);
 
-  // ✅ Fetch upcoming tests from Firestore
-  // ✅ Fetch upcoming tests from Firestore
-useEffect(() => {
-  const fetchTests = async () => {
-    try {
-      const q = query(collection(db, "int_tests"), orderBy("date", "asc"));
-      const snapshot = await getDocs(q);
+  // ✅ Fetch & classify tests
+  useEffect(() => {
+    const fetchTests = async () => {
+      try {
+        const q = query(collection(db, "int_tests"), orderBy("date", "asc"));
+        const snapshot = await getDocs(q);
 
-      const now = new Date(); // current time
+        const currentTime = new Date();
 
-      const testsData: Test[] = snapshot.docs
-        .map((doc) => {
+        const allTests: Test[] = snapshot.docs.map((doc) => {
           const data = doc.data();
-
           const dateStr = data.date || "";
           const timeStr = data.time || "";
+          const durationStr = data.duration?.toString() || "0";
+          const durationNum = parseInt(durationStr.replace(/\D/g, "")) || 0;
 
-          // Convert "2025-11-05" + "10:00 AM" → JS Date
           const scheduledDateTime = new Date(`${dateStr} ${timeStr}`);
+          const endDateTime = new Date(scheduledDateTime.getTime() + durationNum * 60000);
 
           return {
             id: doc.id,
             company_name: data.company_name || "Unknown",
             test_title: data.testName || "Untitled Test",
             questions: data.numQuestions || 0,
-            duration: data.duration
-              ? data.duration.toString().includes("min")
-                ? data.duration
-                : `${data.duration} mins`
-              : "N/A",
+            duration: durationStr.includes("min") ? durationStr : `${durationStr} mins`,
             date: data.date || "N/A",
             time: data.time || "N/A",
             scheduledDateTime,
+            endDateTime,
           };
-        })
-        // ✅ Filter: only tests with future date/time
-        .filter((test) => test.scheduledDateTime > now)
-        // ✅ Sort by date ascending
-        .sort((a, b) => a.scheduledDateTime.getTime() - b.scheduledDateTime.getTime());
+        });
 
-      console.log("Upcoming tests:", testsData);
-      setTests(testsData);
-    } catch (err) {
-      console.error("Error fetching tests:", err);
-    } finally {
-      setLoadingTests(false);
-    }
-  };
+        const ongoing = allTests.filter(
+          (t) => t.scheduledDateTime <= currentTime && t.endDateTime >= currentTime
+        );
+        const upcoming = allTests.filter((t) => t.scheduledDateTime > currentTime);
 
-  fetchTests();
-}, []);
+        ongoing.sort((a, b) => a.scheduledDateTime.getTime() - b.scheduledDateTime.getTime());
+        upcoming.sort((a, b) => a.scheduledDateTime.getTime() - b.scheduledDateTime.getTime());
 
+        setOngoingTests(ongoing);
+        setUpcomingTests(upcoming);
+      } catch (err) {
+        console.error("Error fetching tests:", err);
+      } finally {
+        setLoadingTests(false);
+      }
+    };
 
+    fetchTests();
+  }, []);
 
   if (!user) return <div className="p-6 text-center">Loading user data...</div>;
 
-  // ✅ Readiness logic
+  // ✅ Helper: countdown
+  const formatTimeLeft = (target: Date) => {
+    const diff = target.getTime() - now.getTime();
+    if (diff <= 0) return "00:00:00";
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    const minutes = Math.floor((diff / (1000 * 60)) % 60);
+    const seconds = Math.floor((diff / 1000) % 60);
+    return `${hours.toString().padStart(2, "0")}:${minutes
+      .toString()
+      .padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
+  };
+
+  // ✅ Readiness color logic
   const getReadinessColor = (score: number) => {
     if (score < 35) return 'text-red-500';
     if (score < 70) return 'text-yellow-500';
@@ -168,10 +188,61 @@ useEffect(() => {
   const readinessColor = getReadinessColor(readinessScore.total);
   const readinessLabel = getReadinessLabel(readinessScore.total);
 
+  // ✅ Table renderer
+  const renderTestTable = (tests: Test[], type: "ongoing" | "upcoming") => (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Sl. No</TableHead>
+          <TableHead>Company</TableHead>
+          <TableHead>Title</TableHead>
+          <TableHead>Questions</TableHead>
+          <TableHead>Duration</TableHead>
+          <TableHead>Date</TableHead>
+          <TableHead>Time</TableHead>
+          <TableHead className="text-center">
+            <Clock className="inline h-4 w-4 mr-1" />
+            {type === "ongoing" ? "Closes in" : "Starts in"}
+          </TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {tests.map((test, index) => (
+          <TableRow
+            key={test.id}
+            onClick={
+              type === "ongoing"
+                ? () => (window.location.href = `/dashboard/test/${test.id}`)
+                : undefined
+            }
+            className={`transition-colors ${
+              type === "ongoing"
+                ? "cursor-pointer hover:bg-green-50"
+                : "cursor-not-allowed bg-gray-50 opacity-80"
+            }`}
+          >
+            <TableCell>{index + 1}</TableCell>
+            <TableCell>{test.company_name}</TableCell>
+            <TableCell>{test.test_title}</TableCell>
+            <TableCell>{test.questions}</TableCell>
+            <TableCell>{test.duration}</TableCell>
+            <TableCell>{test.date}</TableCell>
+            <TableCell>{test.time}</TableCell>
+            <TableCell className="text-center font-semibold">
+              {type === "ongoing"
+                ? formatTimeLeft(test.endDateTime)
+                : formatTimeLeft(test.scheduledDateTime)}
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
+
   // ================== Render UI ===================
   return (
     <div className="flex flex-1 flex-col gap-4">
-      {/* Welcome Section */}
+      {/* Welcome + Readiness Section */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card className="col-span-1 md:col-span-2 lg:col-span-4">
           <CardHeader>
@@ -185,7 +256,7 @@ useEffect(() => {
           </CardHeader>
         </Card>
 
-        {/* Readiness Section */}
+        {/* Readiness Score */}
         <Card className="lg:col-span-2">
           <CardHeader className="pb-2">
             <CardTitle className="text-lg font-medium">Placement Readiness Score</CardTitle>
@@ -236,13 +307,13 @@ useEffect(() => {
         </div>
       </div>
 
-      {/* ✅ Upcoming Tests Table (Dynamic from Firestore) */}
+      {/* Ongoing Tests */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Calendar className="h-5 w-5" /> Upcoming Tests
+          <CardTitle className="flex items-center gap-2 text-green-600">
+            <PlayCircle className="h-5 w-5" /> Ongoing Tests
           </CardTitle>
-          <CardDescription>Stay prepared for your upcoming assessments.</CardDescription>
+          <CardDescription>Tests that are currently live.</CardDescription>
         </CardHeader>
         <CardContent>
           {loadingTests ? (
@@ -250,35 +321,32 @@ useEffect(() => {
               <Loader2 className="h-5 w-5 animate-spin mr-2 text-primary" />
               Loading tests...
             </div>
-          ) : tests.length === 0 ? (
+          ) : ongoingTests.length === 0 ? (
+            <p className="text-center text-muted-foreground">No ongoing tests right now.</p>
+          ) : (
+            renderTestTable(ongoingTests, "ongoing")
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Upcoming Tests */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Calendar className="h-5 w-5" /> Upcoming Tests
+          </CardTitle>
+          <CardDescription>Prepare for your scheduled assessments.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loadingTests ? (
+            <div className="flex justify-center items-center py-4">
+              <Loader2 className="h-5 w-5 animate-spin mr-2 text-primary" />
+              Loading tests...
+            </div>
+          ) : upcomingTests.length === 0 ? (
             <p className="text-center text-muted-foreground">No upcoming tests found.</p>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Sl. No</TableHead>
-                  <TableHead>Company Name</TableHead>
-                  <TableHead>Test Title</TableHead>
-                  <TableHead>Questions</TableHead>
-                  <TableHead>Duration</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Time</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {tests.map((test, index) => (
-                  <TableRow key={test.id}>
-                    <TableCell>{index + 1}</TableCell>
-                    <TableCell>{test.company_name}</TableCell>
-                    <TableCell>{test.test_title}</TableCell>
-                    <TableCell>{test.questions}</TableCell>
-                    <TableCell>{test.duration}</TableCell>
-                    <TableCell>{test.date}</TableCell>
-                    <TableCell>{test.time}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            renderTestTable(upcomingTests, "upcoming")
           )}
         </CardContent>
       </Card>
