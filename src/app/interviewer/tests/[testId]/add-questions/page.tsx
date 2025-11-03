@@ -2,7 +2,16 @@
 
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { collection, doc, getDoc, addDoc, updateDoc } from 'firebase/firestore';
+import {
+  collection,
+  doc,
+  getDoc,
+  addDoc,
+  updateDoc,
+  getDocs,
+  query,
+  where,
+} from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
@@ -14,6 +23,7 @@ import {
   CardTitle,
   CardFooter,
 } from '@/components/ui/card';
+import * as XLSX from 'xlsx';
 
 export default function AddQuestionsPage() {
   const router = useRouter();
@@ -23,60 +33,127 @@ export default function AddQuestionsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  // ✅ Fetch test details from Firestore
+  // ✅ Fetch test details + existing questions
   useEffect(() => {
-    const fetchTest = async () => {
+    const fetchTestAndQuestions = async () => {
       if (!testId) return;
+
       const testRef = doc(db, 'int_tests', testId as string);
       const testSnap = await getDoc(testRef);
-      if (testSnap.exists()) {
-        const data = testSnap.data();
-        setTestData(data);
-
-        const emptyRows = Array.from({ length: data.numQuestions }, (_, i) => ({
-          slno: i + 1,
-          question: '',
-          options: [''],
-          correct: '',
-          image: null,
-        }));
-        setQuestions(emptyRows);
+      if (!testSnap.exists()) {
+        setLoading(false);
+        return;
       }
+
+      const data = testSnap.data();
+      setTestData(data);
+
+      // ⚡️Fetch existing questions for this test
+      const qRef = collection(db, 'int_ques');
+      const qSnap = await getDocs(query(qRef, where('testid', '==', testId)));
+
+      const existingQuestions = qSnap.docs.map((docSnap, idx) => ({
+        id: docSnap.id,
+        slno: idx + 1,
+        question: docSnap.data().question || '',
+        options: docSnap.data().options || [''],
+        correct: docSnap.data().correct_ans || '',
+        image: docSnap.data().img_link
+          ? { preview: docSnap.data().img_link, file: null }
+          : null,
+      }));
+
+      // ⚡️Fill remaining empty rows up to total question count
+      const emptySlots = Math.max(data.numQuestions - existingQuestions.length, 0);
+      const emptyRows = Array.from({ length: emptySlots }, (_, i) => ({
+        slno: existingQuestions.length + i + 1,
+        question: '',
+        options: [''],
+        correct: '',
+        image: null,
+      }));
+
+      setQuestions([...existingQuestions, ...emptyRows]);
       setLoading(false);
     };
 
-    fetchTest();
+    fetchTestAndQuestions();
   }, [testId]);
 
-  // ✅ Handle question field change
+  // ✅ Handle Excel Import (with dynamic option count)
+  const handleExcelImport = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const data = new Uint8Array(e.target?.result as ArrayBuffer);
+      const workbook = XLSX.read(data, { type: 'array' });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const jsonData = XLSX.utils.sheet_to_json(sheet);
+
+      const parsedQuestions = jsonData.map((row: any, index: number) => {
+        const optionKeys = Object.keys(row).filter((key) =>
+          key.toLowerCase().startsWith('option')
+        );
+
+        const options = optionKeys
+          .map((key) => row[key])
+          .filter((opt) => opt !== undefined && opt !== null)
+          .map((opt) => String(opt).trim())
+          .filter((opt) => opt !== '');
+
+        return {
+          slno: index + 1,
+          question: String(row['Question'] || '').trim(),
+          options,
+          correct: String(row['Correct Option'] || '').trim(),
+          image: null,
+        };
+      });
+
+      // ⚡️If imported fewer than total, fill remaining empty slots
+      const total = testData?.numQuestions || parsedQuestions.length;
+      const emptySlots = Math.max(total - parsedQuestions.length, 0);
+      const emptyRows = Array.from({ length: emptySlots }, (_, i) => ({
+        slno: parsedQuestions.length + i + 1,
+        question: '',
+        options: [''],
+        correct: '',
+        image: null,
+      }));
+
+      setQuestions([...parsedQuestions, ...emptyRows]);
+    };
+
+    reader.readAsArrayBuffer(file);
+  };
+
+  // ✅ Handle inputs, options, image — (same as before)
   const handleInputChange = (index: number, field: string, value: string) => {
     const updated = [...questions];
     updated[index][field] = value;
     setQuestions(updated);
   };
 
-  // ✅ Handle option text change
   const handleOptionChange = (qIndex: number, optIndex: number, value: string) => {
     const updated = [...questions];
     updated[qIndex].options[optIndex] = value;
     setQuestions(updated);
   };
 
-  // ✅ Add new option
   const addOption = (qIndex: number) => {
     const updated = [...questions];
     updated[qIndex].options.push('');
     setQuestions(updated);
   };
 
-  // ✅ Remove an option
   const removeOption = (qIndex: number, optIndex: number) => {
     const updated = [...questions];
     updated[qIndex].options.splice(optIndex, 1);
     setQuestions(updated);
   };
 
-  // ✅ Handle image upload preview
   const handleImageUpload = (qIndex: number, file: File) => {
     const updated = [...questions];
     const imageUrl = URL.createObjectURL(file);
@@ -84,7 +161,7 @@ export default function AddQuestionsPage() {
     setQuestions(updated);
   };
 
-  // ✅ Save questions to Firestore with image upload
+  // ✅ Save Questions to Firestore
   const handleSaveQuestions = async () => {
     if (!testId || !testData) return;
 
@@ -93,28 +170,24 @@ export default function AddQuestionsPage() {
       for (const q of questions) {
         let img_link = null;
 
-        // ✅ Upload image if present
         if (q.image && q.image.file) {
-          const imageRef = ref(
-            storage,
-            `questions/${testId}/q${q.slno}_${Date.now()}`
-          );
+          const imageRef = ref(storage, `questions/${testId}/q${q.slno}_${Date.now()}`);
           await uploadBytes(imageRef, q.image.file);
           img_link = await getDownloadURL(imageRef);
+        } else if (q.image?.preview && !q.image.file) {
+          img_link = q.image.preview; // keep existing link
         }
 
-        // ✅ Add to "int_ques" collection
         await addDoc(collection(db, 'int_ques'), {
           slno: q.slno,
           question: q.question,
-          options: q.options.filter((opt: string) => opt.trim() !== ''),
+          options: q.options.filter((opt: string) => String(opt).trim() !== ''),
           correct_ans: q.correct,
           testid: testId,
           img_link: img_link || null,
         });
       }
 
-      // ✅ Update the test document
       await updateDoc(doc(db, 'int_tests', testId as string), {
         que_added: questions.length,
       });
@@ -144,6 +217,24 @@ export default function AddQuestionsPage() {
         </CardHeader>
 
         <CardContent>
+          {/* Excel Import */}
+          <div className="mb-4 flex justify-end">
+            <input
+              id="excelInput"
+              type="file"
+              accept=".xlsx, .xls"
+              className="hidden"
+              onChange={handleExcelImport}
+            />
+            <Button
+              variant="outline"
+              onClick={() => document.getElementById('excelInput')?.click()}
+            >
+              📄 Import Excel
+            </Button>
+          </div>
+
+          {/* ✅ Table (unchanged layout) */}
           <div className="overflow-x-auto">
             <table className="w-full border border-gray-300 text-sm">
               <thead className="bg-gray-100">
@@ -151,122 +242,87 @@ export default function AddQuestionsPage() {
                   <th className="border p-2 text-center w-[60px]">Sl. No</th>
                   <th className="border p-2 text-left w-[400px]">Question</th>
                   <th className="border p-2 text-left w-[350px]">Options</th>
-                  <th className="border p-2 text-left w-[160px]">
-                    Correct Answer
-                  </th>
+                  <th className="border p-2 text-left w-[160px]">Correct Answer</th>
                 </tr>
               </thead>
               <tbody>
                 {questions.map((q, qIndex) => (
                   <tr key={qIndex} className="align-top">
                     <td className="border p-2 text-center">{q.slno}</td>
-
-                    {/* ✅ Question + image upload */}
+                    {/* Question + Image */}
                     <td className="border p-2 align-top">
                       <div className="flex flex-col gap-2">
-                        <div className="flex items-center gap-2">
-                          <textarea
-                            className="w-full border rounded-md p-2 resize-none overflow-hidden min-h-[40px]"
-                            value={q.question}
-                            onChange={(e) => {
-                              handleInputChange(qIndex, 'question', e.target.value);
-                              e.target.style.height = 'auto';
-                              e.target.style.height = `${e.target.scrollHeight}px`;
-                            }}
-                            placeholder="Enter question..."
-                          />
-
-                          {/* Image upload */}
-                          <label className="cursor-pointer flex items-center justify-center w-8 h-8 rounded-full bg-gray-100 border hover:bg-gray-200">
-                            📷
-                            <input
-                              type="file"
-                              accept="image/*"
-                              className="hidden"
-                              onChange={(e) => {
-                                if (e.target.files && e.target.files[0]) {
-                                  handleImageUpload(qIndex, e.target.files[0]);
-                                }
-                              }}
-                            />
-                          </label>
-                        </div>
-
-                        {/* Image preview */}
+                        <textarea
+                          className="w-full border rounded-md p-2 resize-none overflow-hidden min-h-[40px]"
+                          value={q.question}
+                          onChange={(e) =>
+                            handleInputChange(qIndex, 'question', e.target.value)
+                          }
+                          placeholder="Enter question..."
+                        />
                         {q.image && (
-                          <div className="relative w-[150px] mt-1">
-                            <img
-                              src={q.image.preview}
-                              alt={`Question ${q.slno}`}
-                              className="rounded-md border object-cover w-full h-auto"
-                            />
+                          <img
+                            src={q.image.preview}
+                            alt="preview"
+                            className="rounded-md border w-[150px]"
+                          />
+                        )}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => {
+                            if (e.target.files && e.target.files[0]) {
+                              handleImageUpload(qIndex, e.target.files[0]);
+                            }
+                          }}
+                        />
+                      </div>
+                    </td>
+                    {/* Options */}
+                    <td className="border p-2">
+                      {q.options.map((opt: string, optIndex: number) => (
+                        <div key={optIndex} className="flex gap-2 mb-1">
+                          <Input
+                            value={opt}
+                            onChange={(e) =>
+                              handleOptionChange(qIndex, optIndex, e.target.value)
+                            }
+                            placeholder={`Option ${optIndex + 1}`}
+                          />
+                          {q.options.length > 1 && (
                             <Button
                               variant="destructive"
                               size="sm"
-                              className="absolute top-1 right-1 text-xs py-0 px-1"
-                              onClick={() => {
-                                const updated = [...questions];
-                                updated[qIndex].image = null;
-                                setQuestions(updated);
-                              }}
+                              onClick={() => removeOption(qIndex, optIndex)}
                             >
                               ✕
                             </Button>
-                          </div>
-                        )}
-                      </div>
+                          )}
+                        </div>
+                      ))}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => addOption(qIndex)}
+                      >
+                        + Add Option
+                      </Button>
                     </td>
-
-                    {/* ✅ Options */}
-                    <td className="border p-2">
-                      <div className="flex flex-col gap-2">
-                        {q.options.map((opt: string, optIndex: number) => (
-                          <div key={optIndex} className="flex items-center gap-2">
-                            <Input
-                              value={opt}
-                              onChange={(e) =>
-                                handleOptionChange(qIndex, optIndex, e.target.value)
-                              }
-                              placeholder={`Option ${optIndex + 1}`}
-                            />
-                            {q.options.length > 1 && (
-                              <Button
-                                variant="destructive"
-                                size="sm"
-                                onClick={() => removeOption(qIndex, optIndex)}
-                              >
-                                ✕
-                              </Button>
-                            )}
-                          </div>
-                        ))}
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => addOption(qIndex)}
-                        >
-                          + Add Option
-                        </Button>
-                      </div>
-                    </td>
-
-                    {/* ✅ Correct answer dropdown */}
+                    {/* Correct Answer */}
                     <td className="border p-2">
                       <select
-                        className="border rounded-md p-2 bg-white text-sm"
+                        className="border rounded-md p-2 bg-white text-sm w-full"
                         value={q.correct}
                         onChange={(e) =>
                           handleInputChange(qIndex, 'correct', e.target.value)
                         }
                       >
                         <option value="">Select...</option>
-                        {q.options
-                          .filter((opt: string) => opt.trim() !== '')
-                          .map((opt: string, idx: number) => (
-                            <option key={idx} value={opt}>
-                              {opt || `Option ${idx + 1}`}
-                            </option>
-                          ))}
+                        {q.options.map((opt: string, idx: number) => (
+                          <option key={idx} value={opt}>
+                            {opt || `Option ${idx + 1}`}
+                          </option>
+                        ))}
                       </select>
                     </td>
                   </tr>
