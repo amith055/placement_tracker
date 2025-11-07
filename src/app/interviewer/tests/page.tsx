@@ -48,6 +48,7 @@ export default function TestsPage() {
   const [numQuestions, setNumQuestions] = useState('');
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
+  const [negativeMarks, setNegativeMarks] = useState('');
 
   const userId = typeof window !== 'undefined' ? localStorage.getItem('userId') : null;
   const [interviewerName, setInterviewerName] = useState('');
@@ -106,6 +107,7 @@ export default function TestsPage() {
       company_name: companyName,
       interviewerName,
       que_added: 0,
+      negativeMarks: Number(negativeMarks) || 0,
     });
 
     setOpen(false);
@@ -114,6 +116,7 @@ export default function TestsPage() {
     setNumQuestions('');
     setDate('');
     setTime('');
+    setNegativeMarks('');
     fetchTests();
   }
 
@@ -161,6 +164,7 @@ export default function TestsPage() {
                   value={numQuestions}
                   onChange={(e) => setNumQuestions(e.target.value)}
                   placeholder="Enter number of questions"
+                  required
                 />
               </div>
               <div>
@@ -169,6 +173,7 @@ export default function TestsPage() {
                   type="date"
                   value={date}
                   onChange={(e) => setDate(e.target.value)}
+                  required
                 />
               </div>
               <div>
@@ -177,6 +182,16 @@ export default function TestsPage() {
                   type="time"
                   value={time}
                   onChange={(e) => setTime(e.target.value)}
+                  required
+                />
+              </div>
+              <div>
+                <Label>Negative Marks ( per question )</Label>
+                <Input
+                  type="number"
+                  value={negativeMarks}
+                  onChange={(e) => setNegativeMarks(e.target.value)}
+                  placeholder="Enter negative marks (ex. 0.33) "
                 />
               </div>
               <Button onClick={handleAddTest} className="w-full">
@@ -229,36 +244,42 @@ export default function TestsPage() {
       </section>
 
       {/* Completed Tests Section */}
-      <section>
-        <h2 className="text-xl font-semibold mb-4">Completed Tests</h2>
-        {completedTests.length === 0 ? (
-          <p className="text-gray-500">No completed tests available.</p>
-        ) : (
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {completedTests.map((test) => (
-              <Card key={test.id} className="shadow-md opacity-70">
-                <CardHeader>
-                  <h3 className="text-lg font-semibold">{test.testName}</h3>
-                </CardHeader>
-                <CardContent className="space-y-1 text-sm">
-                  <p>
-                    <strong>Date:</strong> {test.date}
-                  </p>
-                  <p>
-                    <strong>Time:</strong> {test.time}
-                  </p>
-                  <p>
-                    <strong>Duration:</strong> {test.duration} min
-                  </p>
-                  <p>
-                    <strong>Questions Added:</strong> {test.que_added}/{test.numQuestions}
-                  </p>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
-      </section>
+      {/* Completed Tests Section */}
+<section>
+  <h2 className="text-xl font-semibold mb-4">Completed Tests</h2>
+  {completedTests.length === 0 ? (
+    <p className="text-gray-500">No completed tests available.</p>
+  ) : (
+    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+      {completedTests.map((test) => (
+        <Card
+          key={test.id}
+          onClick={() => router.push(`/interviewer/tests/${test.id}/results`)}
+          className="shadow-md opacity-80 hover:opacity-100 hover:shadow-lg transition-all duration-200 cursor-pointer"
+        >
+          <CardHeader>
+            <h3 className="text-lg font-semibold">{test.testName}</h3>
+          </CardHeader>
+          <CardContent className="space-y-1 text-sm">
+            <p>
+              <strong>Date:</strong> {test.date}
+            </p>
+            <p>
+              <strong>Time:</strong> {test.time}
+            </p>
+            <p>
+              <strong>Duration:</strong> {test.duration} min
+            </p>
+            <p>
+              <strong>Questions Added:</strong> {test.que_added}/{test.numQuestions}
+            </p>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  )}
+</section>
+
     </div>
   );
 }

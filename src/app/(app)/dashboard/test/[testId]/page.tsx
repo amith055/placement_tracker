@@ -39,6 +39,9 @@ export default function AptitudeTestPage({ params }: { params: { testId: string 
   const [isTimeUp, setIsTimeUp] = useState(false);
   const [score, setScore] = useState<number | null>(null);
   const [totalQuestions, setTotalQuestions] = useState<number>(0);
+  const [correctCount, setCorrectCount] = useState<number>(0);
+  const [wrongCount, setWrongCount] = useState<number>(0);
+  const [percentage, setPercentage] = useState<number>(0);
 
   const email = typeof window !== 'undefined' ? localStorage.getItem('userEmail') || '' : '';
 
@@ -47,7 +50,6 @@ export default function AptitudeTestPage({ params }: { params: { testId: string 
     const fetchTestAndQuestions = async () => {
       setLoading(true);
       try {
-        // ✅ Fetch test metadata directly using doc ID
         const testRef = doc(db, "int_tests", params.testId);
         const testSnap = await getDoc(testRef);
 
@@ -58,37 +60,27 @@ export default function AptitudeTestPage({ params }: { params: { testId: string 
         }
 
         const testData = { id: testSnap.id, ...testSnap.data() };
-        console.log("✅ Test Data:", testData);
         setTestDetails(testData);
 
-        // ✅ Fetch related questions — adjust 'testid' field if your field is 'testId'
-        const questionRef = collection(db, "int_ques");
-        const questionQuery = query(questionRef, where("testid", "==", params.testId));
-        const questionSnap = await getDocs(questionQuery);
+        const questionRef = collection(db, "int_tests", params.testId, "questions");
+const questionSnap = await getDocs(questionRef);
 
-        console.log("📦 Raw Question Snapshot:", questionSnap.size);
-        if (questionSnap.empty) {
-          console.warn("⚠️ No questions found for testid:", params.testId);
-        }
+const questionsData = questionSnap.docs.map((docSnap) => {
+  const data = docSnap.data();
+  return {
+    id: docSnap.id,
+    slno: data.slno ?? 0,
+    question: data.question ?? '',
+    options: Array.isArray(data.options) ? data.options : [],
+    correct_ans: data.correct_ans ?? '',
+    img_link: data.img_link ?? null,
+  };
+});
 
-        const questionsData = questionSnap.docs.map((d) => {
-          const data = d.data();
-          console.log("🧩 Question doc:", data);
-          return {
-            id: d.id,
-            slno: data.slno ?? 0,
-            question: data.question ?? '',
-            options: Array.isArray(data.options) ? data.options : [],
-            correct_ans: data.correct_ans ?? '',
-            img_link: data.img_link ?? null,
-          };
-        });
 
-        console.log("✅ Questions fetched:", questionsData.length);
         setQuestions(questionsData);
         setTotalQuestions(questionsData.length);
 
-        // ✅ Set timer (convert duration to seconds)
         const durationMinutes = Number((testData as any).duration) || 0;
         setTimeLeft(durationMinutes > 0 ? durationMinutes * 60 : null);
       } catch (error) {
@@ -138,85 +130,90 @@ export default function AptitudeTestPage({ params }: { params: { testId: string 
 
   // ---------------- Submit ----------------
   const handleSubmit = async (auto = false) => {
-  if (questions.length === 0) {
-    setIsTimeUp(true);
-    return;
-  }
+    if (questions.length === 0) {
+      setIsTimeUp(true);
+      return;
+    }
 
-  const answeredCount = Object.keys(selectedAnswers).length;
-  const allAnswered = answeredCount === questions.length;
-  if (!allAnswered && !auto) {
-    alert("Please answer all questions before submitting!");
-    return;
-  }
+    const answeredCount = Object.keys(selectedAnswers).length;
+    const allAnswered = answeredCount === questions.length;
+    // if (!allAnswered && !auto) {
+    //   alert("Please answer all questions before submitting!");
+    //   return;
+    // }
 
-  // ✅ Calculate score
-  let correct = 0;
-  questions.forEach((q, i) => {
-    const selected = selectedAnswers[i];
-    if (selected === q.correct_ans) correct++;
-  });
-  setScore(correct);
+    const negativeMarks = Number(testDetails.negativeMarks || 0);
 
-  const denom = totalQuestions || questions.length;
-  const percentage = denom > 0 ? (correct / denom) * 100 : 0;
-  const percentageRounded = Number(percentage.toFixed(2));
+    let correct = 0;
+    let wrong = 0;
 
-  if (email) {
-    try {
-      // ✅ Get user by email
-      const userQuery = query(collection(db, "users"), where("email", "==", email));
-      const userSnap = await getDocs(userQuery);
+    questions.forEach((q, i) => {
+      const selected = selectedAnswers[i];
+      if (!selected) return;
+      if (selected === q.correct_ans) correct++;
+      else wrong++;
+    });
 
-      if (!userSnap.empty) {
-        const userDoc = userSnap.docs[0];
-        const userId = userDoc.id;
+    const totalScore = correct - wrong * negativeMarks;
+    const denom = totalQuestions || questions.length;
+    const percentageScore = denom > 0 ? (totalScore / denom) * 100 : 0;
+    const percentageRounded = Math.max(0, Number(percentageScore.toFixed(2)));
 
-        // ✅ 1️⃣ Store in user's subcollection
-        const userTestRef = doc(db, "users", userId, "tests", params.testId);
-        await updateDoc(userTestRef, {
-          score: percentageRounded,
-          attempted: true,
-          submittedAt: new Date(),
-        }).catch(async () => {
-          await setDoc(userTestRef, {
+    setScore(totalScore);
+    setCorrectCount(correct);
+    setWrongCount(wrong);
+    setPercentage(percentageRounded);
+
+    if (email) {
+      try {
+        const userQuery = query(collection(db, "users"), where("email", "==", email));
+        const userSnap = await getDocs(userQuery);
+
+        if (!userSnap.empty) {
+          const userDoc = userSnap.docs[0];
+          const userId = userDoc.id;
+
+          const userTestRef = doc(db, "users", userId, "tests", params.testId);
+          await updateDoc(userTestRef, {
             score: percentageRounded,
+            correct,
+            wrong,
             attempted: true,
             submittedAt: new Date(),
+          }).catch(async () => {
+            await setDoc(userTestRef, {
+              score: percentageRounded,
+              correct,
+              wrong,
+              attempted: true,
+              submittedAt: new Date(),
+            });
           });
-        });
 
-        // ✅ 2️⃣ Store in int_tests -> student_attempted subcollection
-        const testAttemptRef = doc(db, "int_tests", params.testId, "student_attempted", email);
-        await updateDoc(testAttemptRef, {
-          email: email,
-          score: percentageRounded,
-          submittedAt: new Date(),
-        }).catch(async () => {
-          await setDoc(testAttemptRef, {
-            email: email,
+          const testAttemptRef = doc(db, "int_tests", params.testId, "student_attempted", email);
+          await updateDoc(testAttemptRef, {
+            email,
             score: percentageRounded,
+            correct,
+            wrong,
             submittedAt: new Date(),
+          }).catch(async () => {
+            await setDoc(testAttemptRef, {
+              email,
+              score: percentageRounded,
+              correct,
+              wrong,
+              submittedAt: new Date(),
+            });
           });
-        });
-
-        // ✅ 3️⃣ Mark test as completed in user’s side (optional)
-        const testRef = doc(db, "int_tests", params.testId);
-        await updateDoc(testRef, {
-          [`studentsCompleted.${userId}`]: true, // optional map for quick lookup
-        }).catch(() => {});
-
-        console.log("✅ Test result stored in both user & test records!");
+        }
+      } catch (err) {
+        console.error("🔥 Error storing test result:", err);
       }
-    } catch (err) {
-      console.error("🔥 Error storing test result:", err);
     }
-  }
 
-  setIsTimeUp(true);
-};
-
-
+    setIsTimeUp(true);
+  };
 
   // ---------------- Utils ----------------
   const formatTime = (seconds: number | null) => {
@@ -299,7 +296,10 @@ export default function AptitudeTestPage({ params }: { params: { testId: string 
                 </Button>
 
                 {currentQuestionIndex === questions.length - 1 ? (
-                  <Button onClick={() => handleSubmit()} disabled={answeredCount < questions.length}>
+                  <Button
+                    onClick={() => handleSubmit()}
+                    // disabled={Object.keys(selectedAnswers).length !== questions.length}
+                  >
                     Submit
                   </Button>
                 ) : (
@@ -322,8 +322,14 @@ export default function AptitudeTestPage({ params }: { params: { testId: string 
             <AlertDialogDescription>
               {score !== null ? (
                 <>
-                  You scored <strong>{score}/{questions.length}</strong>.<br />
-                  Your aptitude score has been updated.
+                  <p>
+                    ✅ Correct Answers: <strong>{correctCount}</strong><br />
+                    ❌ Wrong Answers: <strong>{wrongCount}</strong><br />
+                    🧮 Negative Marks per Wrong: <strong>{testDetails.negativeMarks || 0}</strong><br /><br />
+                    Final Score: <strong>{score}/{questions.length}</strong><br />
+                    Percentage: <strong>{percentage}%</strong><br />
+                    Your aptitude score has been updated successfully.
+                  </p>
                 </>
               ) : (
                 "Your responses have been recorded."
@@ -332,7 +338,7 @@ export default function AptitudeTestPage({ params }: { params: { testId: string 
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogAction asChild>
-              <Link href="/aptitude">Back to Tests</Link>
+              <Link href="/dashboard">Back to Tests</Link>
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

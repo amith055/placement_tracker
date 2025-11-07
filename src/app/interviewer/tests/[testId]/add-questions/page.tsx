@@ -9,8 +9,6 @@ import {
   addDoc,
   updateDoc,
   getDocs,
-  query,
-  where,
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '@/lib/firebase';
@@ -33,13 +31,14 @@ export default function AddQuestionsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  // ✅ Fetch test details + existing questions
+  // ✅ Fetch test details + questions from subcollection
   useEffect(() => {
     const fetchTestAndQuestions = async () => {
       if (!testId) return;
 
       const testRef = doc(db, 'int_tests', testId as string);
       const testSnap = await getDoc(testRef);
+
       if (!testSnap.exists()) {
         setLoading(false);
         return;
@@ -48,13 +47,13 @@ export default function AddQuestionsPage() {
       const data = testSnap.data();
       setTestData(data);
 
-      // ⚡️Fetch existing questions for this test
-      const qRef = collection(db, 'int_ques');
-      const qSnap = await getDocs(query(qRef, where('testid', '==', testId)));
+      // ⚡ Fetch existing questions from subcollection
+      const qRef = collection(db, 'int_tests', testId as string, 'questions');
+      const qSnap = await getDocs(qRef);
 
       const existingQuestions = qSnap.docs.map((docSnap, idx) => ({
         id: docSnap.id,
-        slno: idx + 1,
+        slno: docSnap.data().slno || idx + 1,
         question: docSnap.data().question || '',
         options: docSnap.data().options || [''],
         correct: docSnap.data().correct_ans || '',
@@ -63,7 +62,7 @@ export default function AddQuestionsPage() {
           : null,
       }));
 
-      // ⚡️Fill remaining empty rows up to total question count
+      // ⚡ Fill remaining empty rows up to total question count
       const emptySlots = Math.max(data.numQuestions - existingQuestions.length, 0);
       const emptyRows = Array.from({ length: emptySlots }, (_, i) => ({
         slno: existingQuestions.length + i + 1,
@@ -80,7 +79,7 @@ export default function AddQuestionsPage() {
     fetchTestAndQuestions();
   }, [testId]);
 
-  // ✅ Handle Excel Import (with dynamic option count)
+  // ✅ Excel Import
   const handleExcelImport = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -112,7 +111,7 @@ export default function AddQuestionsPage() {
         };
       });
 
-      // ⚡️If imported fewer than total, fill remaining empty slots
+      // ⚡ Fill empty slots if fewer imported
       const total = testData?.numQuestions || parsedQuestions.length;
       const emptySlots = Math.max(total - parsedQuestions.length, 0);
       const emptyRows = Array.from({ length: emptySlots }, (_, i) => ({
@@ -129,7 +128,7 @@ export default function AddQuestionsPage() {
     reader.readAsArrayBuffer(file);
   };
 
-  // ✅ Handle inputs, options, image — (same as before)
+  // ✅ Handle input, options, image
   const handleInputChange = (index: number, field: string, value: string) => {
     const updated = [...questions];
     updated[index][field] = value;
@@ -161,12 +160,14 @@ export default function AddQuestionsPage() {
     setQuestions(updated);
   };
 
-  // ✅ Save Questions to Firestore
+  // ✅ Save Questions to Subcollection
   const handleSaveQuestions = async () => {
     if (!testId || !testData) return;
 
     setSaving(true);
     try {
+      const questionsRef = collection(db, 'int_tests', testId as string, 'questions');
+
       for (const q of questions) {
         let img_link = null;
 
@@ -178,12 +179,11 @@ export default function AddQuestionsPage() {
           img_link = q.image.preview; // keep existing link
         }
 
-        await addDoc(collection(db, 'int_ques'), {
+        await addDoc(questionsRef, {
           slno: q.slno,
           question: q.question,
           options: q.options.filter((opt: string) => String(opt).trim() !== ''),
           correct_ans: q.correct,
-          testid: testId,
           img_link: img_link || null,
         });
       }
@@ -234,7 +234,7 @@ export default function AddQuestionsPage() {
             </Button>
           </div>
 
-          {/* ✅ Table (unchanged layout) */}
+          {/* ✅ Table */}
           <div className="overflow-x-auto">
             <table className="w-full border border-gray-300 text-sm">
               <thead className="bg-gray-100">
@@ -249,7 +249,6 @@ export default function AddQuestionsPage() {
                 {questions.map((q, qIndex) => (
                   <tr key={qIndex} className="align-top">
                     <td className="border p-2 text-center">{q.slno}</td>
-                    {/* Question + Image */}
                     <td className="border p-2 align-top">
                       <div className="flex flex-col gap-2">
                         <textarea
@@ -278,7 +277,7 @@ export default function AddQuestionsPage() {
                         />
                       </div>
                     </td>
-                    {/* Options */}
+
                     <td className="border p-2">
                       {q.options.map((opt: string, optIndex: number) => (
                         <div key={optIndex} className="flex gap-2 mb-1">
@@ -308,7 +307,7 @@ export default function AddQuestionsPage() {
                         + Add Option
                       </Button>
                     </td>
-                    {/* Correct Answer */}
+
                     <td className="border p-2">
                       <select
                         className="border rounded-md p-2 bg-white text-sm w-full"
